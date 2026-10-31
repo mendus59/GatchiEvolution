@@ -139,9 +139,34 @@ regenerated from the pet's genome.
   browser uses. The result is authoritative (a modified client cannot fake a
   win), Elo is updated, and the response includes seeds and genomes so the
   client replays both pets side by side.
-- Storage is one JSON file with atomic writes (`server/db.js`). Fine for an MVP
-  and friends; the route handlers only touch `db.data`, so moving to SQLite or
-  Postgres is contained.
+- The routes live in `server/api.js` and talk to a small async store
+  interface. Two stores implement it: `store-file.js` (one JSON file with
+  atomic writes, used by the self-hosted Node server) and `store-postgres.js`
+  (used by the hosted backend). Match results update both ratings in one
+  locked transaction.
+
+## 7. Hosting
+
+```
+ GitHub Pages (static public/)  ──fetch──►  Supabase Edge Function `api` (Deno)
+   js/config.js = function URL                server/api.js + challenge code
+                                              └─► Supabase Postgres (gatchi_* tables)
+```
+
+- `.github/workflows/deploy.yml` runs on every push to main. It pushes the
+  database migration, copies the API and challenge code into the function with
+  `scripts/build-edge.mjs`, deploys it, then publishes `public/` to Pages with
+  `js/config.js` pointing at the function. Without Supabase settings it still
+  publishes the game, and the account and versus panels say they're offline.
+- The function keeps the game's own username/password accounts and bearer
+  tokens, so Supabase Auth is not involved. Tables have row level security on
+  and no policies, so the public anon key can read nothing; only the function
+  (database owner) touches them.
+- Versus stays server-authoritative: the function simulates matches with the
+  same code as the browser. Node and Deno produce identical match results.
+- Supabase pauses free projects after a week idle, so `keepalive.yml` pings
+  the API every three days. Rate limits are kept in memory per function
+  instance, which is weaker than on a single Node process.
 
 **Known limits and next steps**
 
@@ -154,6 +179,5 @@ regenerated from the pet's genome.
   lineage hashes, or rate-limit how far a backup can move from the last one.
 - Async friend challenges (challenge someone offline and get notified),
   tournaments, breeding two friends' Gatchis (crossover is already there).
-- Hosting: the server is a single Node process, so it deploys anywhere
-  (Fly.io, Render, a small VPS). Alternatively the API could move to Supabase
-  or Firebase, with versus checks in an edge function.
+- Self-hosting is still possible: `npm start` runs the game and API as one
+  Node process on any host with a persistent disk.

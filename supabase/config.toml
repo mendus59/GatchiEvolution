@@ -1,0 +1,6 @@
+# Minimal Supabase CLI config for the Gatchi backend.
+project_id = "gatchi-evolution"
+
+[functions.api]
+# The game uses its own session tokens, not Supabase Auth JWTs.
+verify_jwt = false
