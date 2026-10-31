@@ -17,6 +17,38 @@ npm test           # engine + server tests
 Environment variables: `PORT` (default 8080) and `DATA_FILE` (default
 `data/db.json`).
 
+## Hosting (free): GitHub Pages + Supabase
+
+The game is published to GitHub Pages and the account API runs as a Supabase
+Edge Function with Supabase Postgres, both on free tiers. Every push to `main`
+deploys both (`.github/workflows/deploy.yml`). Until Supabase is set up, Pages
+still gets the game with training and play; accounts and versus show as
+offline.
+
+One-time setup:
+
+1. **Pages:** repo Settings → Pages → Build and deployment → Source:
+   **GitHub Actions**.
+2. **Supabase project:** sign up at https://supabase.com, create a new project
+   (free plan). Save the database password you choose. The project id (the
+   20-letter "Reference ID") is in Project Settings → General.
+3. **Access token:** https://supabase.com/dashboard/account/tokens →
+   Generate new token.
+4. **GitHub settings:** repo Settings → Secrets and variables → Actions:
+   - Variables tab: `SUPABASE_PROJECT_REF` = the project id
+   - Secrets tab: `SUPABASE_ACCESS_TOKEN` = the token,
+     `SUPABASE_DB_PASSWORD` = the database password
+5. Actions tab → **Deploy** → Run workflow.
+
+The game is then at `https://<user>.github.io/<repo>/`. The free Supabase
+project pauses after a week without use; `keepalive.yml` pings it every three
+days to prevent that. If it does pause, restore it from the Supabase
+dashboard.
+
+Test the hosted function locally with the Supabase CLI
+(`node scripts/build-edge.mjs && supabase start && supabase functions serve api`),
+then `GATCHI_API_URL=http://localhost:54321/functions/v1/api npm test`.
+
 ## Play
 
 1. Hatch your egg. Every Gatchi is generated from a random genome, so yours is
@@ -48,5 +80,8 @@ public/            static client (ES modules, no build step)
   js/storage.js    localStorage
   js/app.js        UI
 server/            accounts, backup, friends, versus
+  api.js           routes (shared by Node and the Supabase function)
+  store-*.js       JSON-file and Postgres storage
+supabase/          migration + Edge Function for the hosted backend
 test/              node:test suites
 ```

@@ -10,7 +10,7 @@ import {
   trainBlocker, spendTraining, playBlocker, awardRun, FOODS,
 } from './pet.js';
 import { store } from './storage.js';
-import { api } from './api.js';
+import { api, online } from './api.js';
 
 const POP_SIZE = 24;
 const $ = (id) => document.getElementById(id);
@@ -560,6 +560,11 @@ function renderSync(extra = '') {
 }
 
 function renderAccount() {
+  if (!online) {
+    $('authForm').classList.add('hidden');
+    $('offlineNote').classList.remove('hidden');
+    $('versusLocked').textContent = 'Versus needs the online server, which is not set up on this site yet.';
+  }
   const signed = !!state.auth;
   $('signedOut').classList.toggle('hidden', signed);
   $('signedIn').classList.toggle('hidden', !signed);
