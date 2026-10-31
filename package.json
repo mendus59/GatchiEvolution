@@ -1,0 +1,12 @@
+{
+  "name": "gatchi-evolution",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser virtual pet that evolves with a genetic algorithm and competes in mini-games.",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}
