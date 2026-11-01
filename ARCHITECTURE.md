@@ -162,6 +162,11 @@ regenerated from the pet's genome.
   tokens, so Supabase Auth is not involved. Tables have row level security on
   and no policies, so the public anon key can read nothing; only the function
   (database owner) touches them.
+- Google sign-in: the browser goes to Supabase Auth's Google provider and
+  comes back with a Supabase access token. `POST /api/oauth` checks that token
+  with Supabase Auth, then signs in the linked player, creates one after the
+  player picks a username, or links Google to the signed-in player. After that
+  it's a normal Gatchi session, so the rest of the API is unchanged.
 - Versus stays server-authoritative: the function simulates matches with the
   same code as the browser. Node and Deno produce identical match results.
 - Supabase pauses free projects after a week idle, so `keepalive.yml` pings

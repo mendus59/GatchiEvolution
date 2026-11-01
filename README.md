@@ -40,7 +40,20 @@ One-time setup:
      `SUPABASE_DB_PASSWORD` = the database password
 5. Actions tab → **Deploy** → Run workflow.
 
-The game is then at `https://<user>.github.io/<repo>/`. The free Supabase
+The game is then at `https://<user>.github.io/<repo>/`.
+
+**Sign in with Google (optional).** Players can sign in with Google instead of
+a password, or link Google to an existing account from the Account tab.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a
+   project, then open **Google Auth Platform**. Fill in **Branding** (app name,
+   support email), set **Audience** to External and press **Publish app**.
+2. **Clients → Create client → Web application**:
+   - Authorized JavaScript origins: `https://<user>.github.io`
+   - Authorized redirect URIs: `https://<project id>.supabase.co/auth/v1/callback`
+3. Add repo secrets `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then run
+   **Deploy**. It switches on Supabase's Google provider and allows redirects
+   back to the Pages site. The free Supabase
 project pauses after a week without use; `keepalive.yml` pings it every three
 days to prevent that. If it does pause, restore it from the Supabase
 dashboard.

@@ -7,7 +7,20 @@ import { createApi, MAX_BODY } from './lib/server/api.js';
 import { postgresStore } from './lib/server/store-postgres.js';
 
 const sql = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 3, idle_timeout: 20 });
-const api = createApi(postgresStore(sql));
+// Google sign-in goes through Supabase Auth in the browser. We check the
+// access token it hands us by asking Supabase Auth who it belongs to.
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const AUTH_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+async function verifyOAuth(accessToken: string) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { Authorization: `Bearer ${accessToken}`, apikey: AUTH_KEY },
+  });
+  if (!res.ok) return null;
+  const user = await res.json().catch(() => null);
+  return user?.id ? { id: 'supabase:' + user.id, email: user.email || '' } : null;
+}
+
+const api = createApi(postgresStore(sql), { verifyOAuth });
 
 // Bearer tokens, no cookies, so any origin may call the API.
 const CORS = {

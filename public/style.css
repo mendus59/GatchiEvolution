@@ -161,3 +161,6 @@ input { background: var(--card); min-width: 0; }
 dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink); max-width: min(420px, calc(100% - 32px)); padding: 18px; }
 dialog::backdrop { background: rgba(20, 14, 32, 0.45); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.google { display: block; width: 100%; margin-bottom: 12px; font-weight: 600; }
+.google::before { content: 'G'; display: inline-block; margin-right: 8px; font-weight: 800; color: #4285f4; }
