@@ -10,7 +10,7 @@ import {
   trainBlocker, spendTraining, playBlocker, awardRun, FOODS,
 } from './pet.js';
 import { store } from './storage.js';
-import { api, online } from './api.js';
+import { api, online, googleEnabled, startGoogleSignIn, takeGoogleReturn } from './api.js';
 
 const POP_SIZE = 24;
 const $ = (id) => document.getElementById(id);
@@ -569,14 +569,60 @@ function renderAccount() {
   $('signedOut').classList.toggle('hidden', signed);
   $('signedIn').classList.toggle('hidden', !signed);
   $('accountBtn').textContent = signed ? `👤 ${state.auth.username}` : 'Sign in';
+  $('googleBtn').classList.toggle('hidden', !googleEnabled);
+  $('googleLinkRow').classList.add('hidden');
   if (signed) {
     $('whoami').textContent = state.auth.username;
-    api.me().then((me) => { $('myElo').textContent = me.elo; }).catch(handleApiError);
+    api.me().then((me) => {
+      $('myElo').textContent = me.elo;
+      $('googleLinkRow').classList.toggle('hidden', !googleEnabled || me.google);
+    }).catch(handleApiError);
     renderSync();
   }
 }
 
+// Shared by password and Google sign-in.
+async function afterSignIn(res) {
+  state.auth = { token: res.token, username: res.username };
+  store.saveAuth(state.auth);
+  renderAccount();
+  // A fresh sign-in on a browser with no real progress adopts the cloud pet.
+  const cloud = await api.pullBackup().catch(() => null);
+  if (cloud && (state.pet.totalGens === 0 || cloud.pet.totalGens > state.pet.totalGens) &&
+      (await ask(`Load ${cloud.pet.name} (gen ${cloud.pet.totalGens}) from the cloud? This replaces the Gatchi in this browser.`, { ok: 'Load' }))) {
+    applyBackup(cloud);
+    toast('Restored from the cloud.');
+  } else {
+    await pushBackup();
+  }
+}
+
+// Finishes a Google sign-in after the redirect back to the game.
+async function finishGoogle(ret) {
+  showTab('account');
+  if (ret.error) return toast(`Google sign-in didn't finish: ${ret.error}`);
+  try {
+    if (ret.link && state.auth) {
+      await api.googleLink(ret.accessToken);
+      toast('Google linked. You can sign in with it from now on.');
+      return renderAccount();
+    }
+    let res = await api.googleSignIn(ret.accessToken);
+    let name = res.suggestion, note = 'Welcome! Pick a username for your Gatchi account. Friends use it to find you.';
+    while (res.needsUsername) {
+      name = await ask(note, { input: name, ok: 'Create account' });
+      if (name === null) return toast('Sign-in cancelled.');
+      try { res = await api.googleSignIn(ret.accessToken, name.trim()); }
+      catch (err) { note = `${err.message}. Try another username.`; }
+    }
+    await afterSignIn(res);
+    toast(`Signed in as ${res.username}.`);
+  } catch (err) { handleApiError(err); }
+}
+
 function setupAccount() {
+  $('googleBtn').onclick = () => startGoogleSignIn(false);
+  $('googleLinkBtn').onclick = () => startGoogleSignIn(true);
   $('accountBtn').onclick = () => showTab('account');
   $('authForm').onsubmit = (e) => e.preventDefault();
   for (const btn of $('authForm').querySelectorAll('button')) {
@@ -585,19 +631,8 @@ function setupAccount() {
       const u = $('authUser').value.trim(), p = $('authPass').value;
       try {
         const res = btn.dataset.mode === 'register' ? await api.register(u, p) : await api.login(u, p);
-        state.auth = { token: res.token, username: res.username };
-        store.saveAuth(state.auth);
         $('authPass').value = '';
-        renderAccount();
-        // A fresh sign-in on a browser with no real progress adopts the cloud pet.
-        const cloud = await api.pullBackup().catch(() => null);
-        if (cloud && (state.pet.totalGens === 0 || cloud.pet.totalGens > state.pet.totalGens) &&
-            (await ask(`Load ${cloud.pet.name} (gen ${cloud.pet.totalGens}) from the cloud? This replaces the Gatchi in this browser.`, { ok: 'Load' }))) {
-          applyBackup(cloud);
-          toast('Restored from the cloud.');
-        } else {
-          await pushBackup();
-        }
+        await afterSignIn(res);
       } catch (err) { handleApiError(err); }
     };
   }
@@ -667,6 +702,8 @@ async function boot() {
   setupAccount();
   renderAll();
   requestAnimationFrame(petLoop);
+  const googleReturn = takeGoogleReturn();
+  if (googleReturn) finishGoogle(googleReturn);
   if (pet.hatched && !Object.keys(pet.ratings).length) runProfile();
 }
 

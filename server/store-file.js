@@ -2,8 +2,10 @@
 // friends; the hosted version uses store-postgres.js behind the same interface.
 //
 // Store interface (all methods async):
-//   getUser(name)                     -> { username, salt, hash, elo, record, friends, backupAt } | null
-//   createUser({ username, salt, hash, createdAt }) -> true, or false if the name is taken
+//   getUser(name)                     -> { username, salt, hash, authId, elo, record, friends, backupAt } | null
+//   getUserByAuth(authId)             -> same, for a linked Google sign-in
+//   createUser({ username, salt, hash, createdAt, authId }) -> true, or false if the name or authId is taken
+//   linkAuth(name, authId)            -> false if authId is already linked to someone
 //   getBackup(name) / setBackup(name, backup)
 //   setFriends(name, friends)
 //   publicUsers(names)                -> [{ username, elo, record, pet }] in the order given, missing names skipped
@@ -28,18 +30,24 @@ export function fileStore(file) {
   }
   const save = () => { if (!timer) timer = setTimeout(flush, 200); };
   const raw = (name) => data.users[String(name).toLowerCase()];
+  const full = (u) => (u ? { username: u.username, salt: u.salt, hash: u.hash, authId: u.authId || null, elo: u.elo, record: { ...u.record }, friends: [...u.friends], backupAt: u.backup?.savedAt || null } : null);
+  const byAuth = (id) => Object.values(data.users).find((u) => u.authId === id);
   const view = (u) => ({ username: u.username, elo: u.elo, record: { ...u.record }, pet: u.backup?.pet || null });
   const tally = (u, s) => { if (s === 1) u.record.wins++; else if (s === 0) u.record.losses++; else u.record.draws++; };
 
   return {
-    async getUser(name) {
-      const u = raw(name);
-      return u ? { username: u.username, salt: u.salt, hash: u.hash, elo: u.elo, record: { ...u.record }, friends: [...u.friends], backupAt: u.backup?.savedAt || null } : null;
+    async getUser(name) { return full(raw(name)); },
+    async getUserByAuth(authId) { return full(byAuth(authId)); },
+    async linkAuth(name, authId) {
+      if (byAuth(authId)) return false;
+      raw(name).authId = authId;
+      save();
+      return true;
     },
-    async createUser({ username, salt, hash, createdAt }) {
+    async createUser({ username, salt, hash, createdAt, authId = null }) {
       const key = username.toLowerCase();
-      if (data.users[key]) return false;
-      data.users[key] = { username, salt, hash, createdAt, elo: 1000, record: { wins: 0, losses: 0, draws: 0 }, friends: [], backup: null, lastVersus: 0 };
+      if (data.users[key] || (authId && byAuth(authId))) return false;
+      data.users[key] = { username, salt, hash, authId, createdAt, elo: 1000, record: { wins: 0, losses: 0, draws: 0 }, friends: [], backup: null, lastVersus: 0 };
       save();
       return true;
     },

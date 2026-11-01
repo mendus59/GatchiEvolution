@@ -125,6 +125,7 @@
         <div id="signedOut">
           <p class="muted">An account keeps your Gatchi's genome safe in the cloud, even if your browser data is cleared, and lets you compete with friends.</p>
           <div id="offlineNote" class="notice hidden">Accounts aren't set up on this copy of the game yet. Your Gatchi is saved in this browser; use Export to keep a copy.</div>
+          <button id="googleBtn" class="google hidden">Sign in with Google</button>
           <form id="authForm" class="stack">
             <input id="authUser" placeholder="Username" autocomplete="username" required>
             <input id="authPass" type="password" placeholder="Password (8+ characters)" autocomplete="current-password" required>
@@ -142,6 +143,7 @@
             <button id="restoreBtn">Restore from cloud</button>
             <button id="logoutBtn">Sign out</button>
           </div>
+          <p id="googleLinkRow" class="hidden small muted">Sign in with Google next time? <button id="googleLinkBtn" class="small">Link Google account</button></p>
         </div>
         <hr>
         <button id="resetBtn" class="danger">Release this Gatchi and start over</button>

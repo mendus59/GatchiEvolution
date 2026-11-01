@@ -7,21 +7,35 @@ const rec = (r) => ({ wins: r.wins, losses: r.losses, draws: r.draws });
 const num = (x) => Number(x);
 
 export function postgresStore(sql) {
+  const COLS = sql`username, salt, hash, auth_id, elo, wins, losses, draws, friends, backup_at`;
+  const full = (r) => (r ? { username: r.username, salt: r.salt, hash: r.hash, authId: r.auth_id, elo: num(r.elo), record: rec(r), friends: r.friends, backupAt: r.backup_at == null ? null : num(r.backup_at) } : null);
   const view = (r) => ({ username: r.username, elo: num(r.elo), record: rec(r), pet: r.pet || null });
 
   return {
     async getUser(name) {
-      const [r] = await sql`
-        select username, salt, hash, elo, wins, losses, draws, friends, backup_at
-        from gatchi_players where key = ${String(name).toLowerCase()}`;
-      return r ? { username: r.username, salt: r.salt, hash: r.hash, elo: num(r.elo), record: rec(r), friends: r.friends, backupAt: r.backup_at == null ? null : num(r.backup_at) } : null;
+      const [r] = await sql`select ${COLS} from gatchi_players where key = ${String(name).toLowerCase()}`;
+      return full(r);
     },
 
-    async createUser({ username, salt, hash, createdAt }) {
+    async getUserByAuth(authId) {
+      const [r] = await sql`select ${COLS} from gatchi_players where auth_id = ${authId}`;
+      return full(r);
+    },
+
+    async linkAuth(name, authId) {
       const rows = await sql`
-        insert into gatchi_players (key, username, salt, hash, created_at)
-        values (${username.toLowerCase()}, ${username}, ${salt}, ${hash}, ${createdAt})
-        on conflict (key) do nothing returning key`;
+        update gatchi_players set auth_id = ${authId}
+        where key = ${String(name).toLowerCase()}
+          and not exists (select 1 from gatchi_players where auth_id = ${authId})
+        returning key`.catch((err) => { if (err.code === '23505') return []; throw err; });
+      return rows.length === 1;
+    },
+
+    async createUser({ username, salt, hash, createdAt, authId = null }) {
+      const rows = await sql`
+        insert into gatchi_players (key, username, salt, hash, created_at, auth_id)
+        values (${username.toLowerCase()}, ${username}, ${salt}, ${hash}, ${createdAt}, ${authId})
+        on conflict do nothing returning key`;
       return rows.length === 1;
     },
 

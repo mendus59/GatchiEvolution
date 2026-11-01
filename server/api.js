@@ -25,6 +25,7 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
 }
 
 function checkPassword(password, user) {
+  if (!user.salt || !user.hash) return false; // Google-only account
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
@@ -93,7 +94,16 @@ export function elo(ra, rb, scoreA, k = 24) {
 
 // ---- api ----------------------------------------------------------------------
 
-export function createApi(store) {
+// Suggest a username from an email address for first-time Google sign-ins.
+function suggestName(email) {
+  const base = String(email || '').split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16);
+  return base.length >= 3 ? base : 'gatchi' + Math.floor(Math.random() * 9000 + 1000);
+}
+
+// verifyOAuth(accessToken) -> { id, email } | null checks a token from the
+// hosted sign-in provider (Supabase Auth, for Google). Without it, Google
+// sign-in is unavailable and only username/password accounts work.
+export function createApi(store, { verifyOAuth = null } = {}) {
   async function authUser(req) {
     const m = /^Bearer (.+)$/.exec(req.authorization || '');
     if (!m) throw new HttpError(401, 'Sign in first');
@@ -136,6 +146,36 @@ export function createApi(store) {
       return { token: await newSession(user.username), username: user.username };
     },
 
+    // Google sign-in. The browser signs in with Google through Supabase Auth
+    // and hands us that access token; we check it with the provider and swap
+    // it for a normal Gatchi session.
+    //   - identity already linked: signs in as that player
+    //   - new identity, no username: { needsUsername, suggestion }
+    //   - new identity + username: creates the player
+    //   - sent with a Gatchi session (link: true): links Google to that player
+    'POST /oauth': async (req, body) => {
+      if (!verifyOAuth) throw new HttpError(501, 'Google sign-in is not set up on this server');
+      rateLimit('oauth:' + req.ip, 30, 15 * 60e3);
+      if (typeof body.accessToken !== 'string' || !body.accessToken) throw new HttpError(400, 'Missing sign-in token');
+      const ident = await verifyOAuth(body.accessToken);
+      if (!ident?.id) throw new HttpError(401, 'Google sign-in failed or expired, please try again');
+      const linked = await store.getUserByAuth(ident.id);
+
+      if (body.link) {
+        const u = await authUser(req);
+        if (linked && !same(linked.username, u.username)) throw new HttpError(409, `That Google account already signs in as ${linked.username}`);
+        if (!linked && !(await store.linkAuth(u.username, ident.id))) throw new HttpError(409, 'That Google account is already linked to another player');
+        return { linked: true, username: u.username };
+      }
+      if (linked) return { token: await newSession(linked.username), username: linked.username };
+      if (body.username == null) return { needsUsername: true, suggestion: suggestName(ident.email) };
+      const { username } = body;
+      if (!USERNAME.test(username || '')) throw new HttpError(400, 'Username: 3-20 letters, numbers, - or _');
+      const created = await store.createUser({ username, salt: null, hash: null, createdAt: Date.now(), authId: ident.id });
+      if (!created) throw new HttpError(409, 'That username is taken');
+      return { token: await newSession(username), username };
+    },
+
     'POST /logout': async (req) => {
       const m = /^Bearer (.+)$/.exec(req.authorization || '');
       if (m) await store.deleteSession(sha256(m[1]));
@@ -144,7 +184,7 @@ export function createApi(store) {
 
     'GET /me': async (req) => {
       const u = await authUser(req);
-      return { username: u.username, elo: Math.round(u.elo), record: u.record, friends: u.friends, backupAt: u.backupAt || null };
+      return { username: u.username, elo: Math.round(u.elo), record: u.record, friends: u.friends, backupAt: u.backupAt || null, google: !!u.authId };
     },
 
     'PUT /backup': async (req, body) => {
