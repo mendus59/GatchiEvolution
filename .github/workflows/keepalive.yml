@@ -10,8 +10,9 @@ permissions:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    if: vars.SUPABASE_PROJECT_REF != ''
     steps:
       - env:
-          PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-        run: curl -fsS "https://$PROJECT_REF.supabase.co/functions/v1/api/leaderboard" > /dev/null
+          PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          if [ -z "$PROJECT_REF" ]; then echo "Supabase not configured"; exit 0; fi
+          curl -fsS "https://$PROJECT_REF.supabase.co/functions/v1/api/leaderboard" > /dev/null
