@@ -4,7 +4,7 @@
 #   2. site:    public/ to GitHub Pages, pointed at that backend
 #
 # Setup (see README "Hosting"):
-#   repo variable  SUPABASE_PROJECT_REF   e.g. abcdefghijklmnopqrst
+#   repo variable  SUPABASE_PROJECT_REF   e.g. abcdefghijklmnopqrst (a secret also works)
 #   repo secrets   SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD
 #   Settings > Pages > Source: GitHub Actions
 name: Deploy
@@ -18,7 +18,7 @@ concurrency:
   group: deploy
   cancel-in-progress: false
 env:
-  PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+  PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF }}
 jobs:
   backend:
     runs-on: ubuntu-latest
