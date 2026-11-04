@@ -55,3 +55,35 @@ test('the GA improves a pet at a challenge', () => {
   }
   assert.ok(last > first * 2, `expected improvement, got ${first} -> ${last}`);
 });
+
+test('v1 genomes still validate and play exactly the same after upgrading', async () => {
+  const { upgradeGenome, GENOME_LENGTH_V1, REGIONS } = await import('../public/js/genome.js');
+  const g = randomGenome(11);
+  const v1 = { v: 1, genes: g.genes.slice(0, GENOME_LENGTH_V1), gen: 0, lineage: [] };
+  assert.ok(validateGenome(v1));
+  const up = upgradeGenome(v1);
+  assert.equal(up.genes.length, GENOME_LENGTH);
+  assert.equal(REGIONS.brains.start, GENOME_LENGTH_V1);
+  for (const c of CHALLENGES) assert.equal(runEpisode(c, up, 4), runEpisode(c, v1, 4), c.id);
+});
+
+test('focused training leaves other games\' skills in place', async () => {
+  const { brainStart, BRAIN_SIZE } = await import('../public/js/genome.js');
+  const { guardRating } = await import('../public/js/ga.js');
+  const { byId } = await import('../public/js/challenges/index.js');
+  let pet = randomGenome(3);
+  let tr = new Trainer({ population: seedPopulation(pet, 24, new Rng(1), 'hop'), focus: 'hop', baseSeed: 3 });
+  for (let i = 0; i < 25; i++) pet = tr.step().champion;
+  const hopBefore = guardRating(pet, byId.hop);
+  assert.ok(hopBefore > 0.1, `hop should have trained, got ${hopBefore}`);
+
+  tr = new Trainer({ population: seedPopulation(pet, 24, new Rng(2), 'climb'), focus: 'climb', baseSeed: 5 });
+  let after;
+  for (let i = 0; i < 25; i++) after = tr.step().champion;
+  // Hop's own brain is untouched by climb training...
+  const h = brainStart(byId.hop.slot);
+  assert.deepEqual(after.genes.slice(h, h + BRAIN_SIZE), pet.genes.slice(h, h + BRAIN_SIZE));
+  // ...and body changes may only soften it a little.
+  const hopAfter = guardRating(after, byId.hop);
+  assert.ok(hopAfter >= hopBefore * 0.8, `hop fell from ${hopBefore} to ${hopAfter}`);
+});

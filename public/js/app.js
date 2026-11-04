@@ -197,6 +197,7 @@ function renderPicker() {
 
 function renderProfile() {
   const { ratings, prevRatings } = state.pet;
+  const bests = state.pet.bestRatings || {};
   $('profile').innerHTML = CHALLENGES.map((c) => {
     const r = ratings[c.id];
     if (r === undefined) return `<div class="prof-row"><span>${c.icon} ${c.name}</span><div class="track"></div><span class="muted">–</span></div>`;
@@ -204,8 +205,10 @@ function renderProfile() {
     const d = p === undefined ? 0 : r - p;
     const delta = Math.abs(d) < 0.005 ? '' : `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'}${Math.round(Math.abs(d) * 100)}</span>`;
     const ghost = p === undefined ? '' : `<div class="ghost-mark" style="left:${Math.min(100, (p / 1.5) * 100)}%"></div>`;
-    return `<div class="prof-row" title="Average score vs. par on fixed test courses"><span>${c.icon} ${c.name}</span>
-      <div class="track"><div class="fill" style="width:${Math.min(100, (r / 1.5) * 100)}%"></div>${ghost}</div>
+    const b = Math.max(bests[c.id] || 0, r);
+    const best = b > r + 0.005 ? `<div class="best-mark" style="left:${Math.min(100, (b / 1.5) * 100)}%"></div>` : '';
+    return `<div class="prof-row" title="Average score vs. par on fixed test courses. Personal best ${Math.round(b * 100)}%"><span>${c.icon} ${c.name}</span>
+      <div class="track"><div class="fill" style="width:${Math.min(100, (r / 1.5) * 100)}%"></div>${ghost}${best}</div>
       <span>${Math.round(r * 100)}% ${delta}</span></div>`;
   }).join('');
 }
@@ -269,11 +272,12 @@ function startTraining() {
   let saved = store.loadPopulation();
   let population;
   if (saved && fingerprint(saved.genomes[0]) === fingerprint(pet.genome)) population = saved.genomes;
-  else population = seedPopulation(pet.genome, POP_SIZE, new Rng(randomSeed()));
+  else population = seedPopulation(pet.genome, POP_SIZE, new Rng(randomSeed()), state.focus);
   state.training = { log: [], focus: state.focus, startGen: pet.totalGens, startRatings: { ...pet.ratings } };
   trainWorker.postMessage({
     cmd: 'train', population, focus: state.focus, baseSeed: randomSeed(),
     gen: pet.totalGens, generations, popSize: POP_SIZE,
+    mastery: { ratings: pet.ratings, bestRatings: pet.bestRatings || {} },
   });
   $('trainBtn').textContent = 'Stop';
   $('trainStatus').textContent = 'Evolving…';
@@ -333,6 +337,8 @@ profileWorker.onmessage = (e) => {
   const pet = state.pet;
   pet.prevRatings = Object.keys(pet.ratings).length ? pet.ratings : e.data.ratings;
   pet.ratings = e.data.ratings;
+  pet.bestRatings ||= {};
+  for (const [id, r] of Object.entries(pet.ratings)) pet.bestRatings[id] = Math.max(pet.bestRatings[id] || 0, r);
   save();
   $('trainStatus').textContent = 'Skill test done. ▲▼ show change since the last test.';
   renderPicker();

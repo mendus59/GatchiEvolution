@@ -2,8 +2,9 @@
 
 Raise a pocket pet that learns by evolution. Your Gatchi plays ten mini-games
 on its own, and a genetic algorithm running in your browser reshapes its body
-and brain to get better at whichever one you train. One body and one brain
-serve all ten games, so getting better at one can help or hurt the others.
+and brain to get better at whichever one you train. Each game builds its own
+lasting skill, but one body serves all ten, so heavy training on one game can
+soften the others a little (never wreck them).
 
 ## Run it
 

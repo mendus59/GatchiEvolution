@@ -5,16 +5,21 @@
 //   LOOKS  purely visual genes (colors, silhouette, pattern, ornaments).
 //   EMBED  a small learned "context" vector per challenge slot, fed into the
 //          brain so it can tell which game it is playing.
-//   BRAIN  weights of one shared feed-forward neural network. Every challenge
-//          runs through the same network, so training on one game always
-//          changes how the pet plays all the others.
+//   BRAIN  one small feed-forward network per challenge slot (w1 + w2 for
+//          slot 0, then `brains` for slots 1-15). Only training a game (or
+//          cross-training) changes its brain, so learned skills are lasting.
+//          The body is shared, so training still shifts the traits every
+//          other game uses.
 //
 // Gene values are quantized to 4 decimals so JSON round trips (localStorage,
 // cloud backup) reproduce behaviour exactly.
 
 import { Rng, hashString, randomSeed } from './rng.js';
 
-export const GENOME_VERSION = 1;
+// v1 genomes had one brain shared by every game. v2 gives each slot its own.
+// v1 genomes still validate and play exactly as before (every slot falls back
+// to the one brain), and upgradeGenome() copies that brain into every slot.
+export const GENOME_VERSION = 2;
 
 export const BODY_GENES = ['size', 'limb', 'muscle', 'eye', 'nerve', 'metab', 'wing', 'focus'];
 export const LOOK_GENES = [
@@ -42,13 +47,23 @@ for (const [name, size] of [
   ['embed', MAX_CHALLENGES * EMBED_SIZE],
   ['w1', W1],
   ['w2', W2],
+  ['brains', (MAX_CHALLENGES - 1) * (W1 + W2)],
 ]) {
   REGIONS[name] = { start: cursor, size };
   cursor += size;
 }
 export const GENOME_LENGTH = cursor;
+export const GENOME_LENGTH_V1 = REGIONS.brains.start;
+export const BRAIN_SIZE = W1 + W2;
 
-const MUTATION_SIGMA = { body: 0.18, looks: 0.06, embed: 0.3, w1: 0.3, w2: 0.3 };
+const MUTATION_SIGMA = { body: 0.18, looks: 0.06, embed: 0.3, w1: 0.3, w2: 0.3, brains: 0.3 };
+
+// Where a slot's brain (w1 then w2) starts. v1 genomes have only slot 0's.
+export function brainStart(slot, length = GENOME_LENGTH) {
+  slot %= MAX_CHALLENGES;
+  if (slot === 0 || length < GENOME_LENGTH) return REGIONS.w1.start;
+  return REGIONS.brains.start + (slot - 1) * BRAIN_SIZE;
+}
 
 export const q = (x) => Math.round(Math.max(-6, Math.min(6, x)) * 1e4) / 1e4;
 // softsign squash to 0..1. Uses only basic arithmetic so it is bit-identical
@@ -67,12 +82,22 @@ export function regionOf(index) {
 export function randomGenome(seed = randomSeed()) {
   const rng = new Rng(seed);
   const genes = new Array(GENOME_LENGTH);
-  for (let i = 0; i < GENOME_LENGTH; i++) {
+  for (let i = 0; i < GENOME_LENGTH_V1; i++) {
     const region = regionOf(i);
     const scale = region === 'w1' || region === 'w2' ? 0.6 : region === 'body' ? 0.7 : 1.2;
     genes[i] = q(rng.gauss() * scale);
   }
-  return { v: GENOME_VERSION, genes, gen: 0, lineage: [] };
+  // Every game starts from the same instincts; training then specializes them.
+  return upgradeGenome({ v: 1, genes: genes.slice(0, GENOME_LENGTH_V1), gen: 0, lineage: [] });
+}
+
+// Bring an older genome to the current layout without changing how it plays.
+export function upgradeGenome(g) {
+  if (!g || !Array.isArray(g.genes) || g.genes.length !== GENOME_LENGTH_V1) return g;
+  const brain = g.genes.slice(REGIONS.w1.start, REGIONS.w1.start + BRAIN_SIZE);
+  const genes = g.genes.slice();
+  for (let s = 1; s < MAX_CHALLENGES; s++) for (const x of brain) genes.push(x);
+  return { ...g, v: GENOME_VERSION, genes };
 }
 
 export function fingerprint(genome) {
@@ -81,7 +106,7 @@ export function fingerprint(genome) {
 }
 
 export function validateGenome(g) {
-  return !!g && Array.isArray(g.genes) && g.genes.length === GENOME_LENGTH &&
+  return !!g && Array.isArray(g.genes) && (g.genes.length === GENOME_LENGTH || g.genes.length === GENOME_LENGTH_V1) &&
     g.genes.every((x) => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) <= 6);
 }
 
@@ -133,8 +158,9 @@ export function thinkInterval(t) {
 export class Brain {
   constructor(genome, challengeIndex) {
     const g = genome.genes;
-    this.w1 = Float64Array.from(g.slice(REGIONS.w1.start, REGIONS.w1.start + W1));
-    this.w2 = Float64Array.from(g.slice(REGIONS.w2.start, REGIONS.w2.start + W2));
+    const b = brainStart(challengeIndex, g.length);
+    this.w1 = Float64Array.from(g.slice(b, b + W1));
+    this.w2 = Float64Array.from(g.slice(b + W1, b + BRAIN_SIZE));
     const e = REGIONS.embed.start + (challengeIndex % MAX_CHALLENGES) * EMBED_SIZE;
     this.embed = g.slice(e, e + EMBED_SIZE).map(softsign);
     this.input = new Float64Array(NET_IN);
@@ -167,12 +193,30 @@ export class Brain {
 
 // ---- Variation operators ----------------------------------------------------
 
-export function mutate(genome, rng, strength = 1) {
+// When training one game (`focusSlot` set) only that game's embedding and
+// brain change, at the normal rate. The shared body changes at half the rate:
+// that is the deliberate, mild cost to other games (and it is checked by the
+// GA's retention guard).
+export const FOCUS_BODY_P = 0.04;
+
+export function mutate(genome, rng, strength = 1, focusSlot = null) {
   const genes = genome.genes.slice();
-  for (const [name, r] of Object.entries(REGIONS)) {
+  const ranges = [];
+  if (focusSlot === null) {
+    for (const [name, r] of Object.entries(REGIONS)) {
+      if (r.start + r.size <= genes.length) ranges.push([name, r.start, r.size, name === 'looks' ? 0.04 : 0.08]);
+    }
+  } else {
+    const b = brainStart(focusSlot, genes.length);
+    ranges.push(['body', REGIONS.body.start, REGIONS.body.size, FOCUS_BODY_P]);
+    ranges.push(['looks', REGIONS.looks.start, REGIONS.looks.size, 0.04]);
+    ranges.push(['embed', REGIONS.embed.start + (focusSlot % MAX_CHALLENGES) * EMBED_SIZE, EMBED_SIZE, 0.08]);
+    ranges.push(['w1', b, W1, 0.08]);
+    ranges.push(['w2', b + W1, W2, 0.08]);
+  }
+  for (const [name, start, size, p] of ranges) {
     const sigma = MUTATION_SIGMA[name] * strength;
-    const p = name === 'looks' ? 0.04 : 0.08;
-    for (let i = r.start; i < r.start + r.size; i++) {
+    for (let i = start; i < start + size; i++) {
       if (rng.next() < p) genes[i] = q(genes[i] + rng.gauss() * sigma);
       else if (rng.next() < 0.003) genes[i] = q(rng.gauss()); // rare macro-mutation
     }
@@ -191,8 +235,12 @@ export function crossover(a, b, rng) {
     const r = REGIONS[name];
     for (let i = r.start; i < r.start + r.size; i++) pick(i, 1);
   }
-  for (let h = 0; h < HIDDEN; h++) pick(REGIONS.w1.start + h * NET_IN, NET_IN);
-  for (let o = 0; o < OUTPUTS; o++) pick(REGIONS.w2.start + o * (HIDDEN + 1), HIDDEN + 1);
+  const slots = genes.length === GENOME_LENGTH && b.genes.length === GENOME_LENGTH ? MAX_CHALLENGES : 1;
+  for (let s = 0; s < slots; s++) {
+    const start = brainStart(s, genes.length);
+    for (let h = 0; h < HIDDEN; h++) pick(start + h * NET_IN, NET_IN);
+    for (let o = 0; o < OUTPUTS; o++) pick(start + W1 + o * (HIDDEN + 1), HIDDEN + 1);
+  }
   return { v: GENOME_VERSION, genes, gen: Math.max(a.gen, b.gen), lineage: a.lineage };
 }
 

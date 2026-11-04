@@ -10,7 +10,7 @@ import { CHALLENGES } from '../public/js/challenges/index.js';
 import { Rng, mixSeeds } from '../public/js/rng.js';
 
 const SESSION_DAYS = 30;
-export const MAX_BODY = 512 * 1024;
+export const MAX_BODY = 1024 * 1024; // v2 genomes are ~22 KB each
 const USERNAME = /^[a-zA-Z0-9_-]{3,20}$/;
 
 export class HttpError extends Error {
