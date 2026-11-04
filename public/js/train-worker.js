@@ -1,9 +1,7 @@
 // Runs the genetic algorithm off the main thread so the pet keeps animating
 // while it trains.
-import { Trainer } from './ga.js';
-import { runEpisode } from './runner.js';
+import { Trainer, skillRating } from './ga.js';
 import { CHALLENGES } from './challenges/index.js';
-import { mixSeeds } from './rng.js';
 
 let stopRequested = false;
 
@@ -14,9 +12,9 @@ self.onmessage = (e) => {
   if (msg.cmd === 'profile') profile(msg);
 };
 
-function train({ population, focus, baseSeed, gen, generations, popSize }) {
+function train({ population, focus, baseSeed, gen, generations, popSize, mastery }) {
   stopRequested = false;
-  const trainer = new Trainer({ population, focus, baseSeed, gen, popSize });
+  const trainer = new Trainer({ population, focus, baseSeed, gen, popSize, mastery });
   let done = 0;
   const loop = () => {
     if (stopRequested || done >= generations) {
@@ -35,10 +33,6 @@ function train({ population, focus, baseSeed, gen, generations, popSize }) {
 // before/after comparisons show what training helped and what it hurt.
 function profile({ genome, id }) {
   const ratings = {};
-  for (const c of CHALLENGES) {
-    let total = 0;
-    for (let k = 0; k < 3; k++) total += runEpisode(c, genome, mixSeeds('profile', c.id, k));
-    ratings[c.id] = total / 3 / c.par;
-  }
+  for (const c of CHALLENGES) ratings[c.id] = skillRating(genome, c);
   self.postMessage({ type: 'profile', ratings, id });
 }

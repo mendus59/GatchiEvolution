@@ -132,6 +132,7 @@ input { background: var(--card); min-width: 0; }
 .prof-row .track { height: 12px; position: relative; }
 .prof-row .fill { background: var(--accent); }
 .prof-row .ghost-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.45; }
+.prof-row .best-mark { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #f59e0b; }
 .delta.up { color: #16a34a; }
 .delta.down { color: var(--danger); }
 

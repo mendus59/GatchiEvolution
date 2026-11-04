@@ -29,6 +29,7 @@ export function newPet(name, seed) {
     totalGens: 0,
     ratings: {}, // challengeId -> normalized score from the latest skill test
     prevRatings: {},
+    bestRatings: {}, // challengeId -> best skill-test rating ever (personal best)
     bestScores: {}, // challengeId -> best raw score ever seen in a watched run
     record: { wins: 0, losses: 0, draws: 0 },
   };

@@ -20,15 +20,21 @@ server only stores accounts and genome backups and referees versus matches.
 
 ## 1. Genome
 
-One flat vector of real numbers (currently 291 genes), quantized to 4 decimals
-so JSON round trips reproduce behaviour exactly. Regions:
+One flat vector of real numbers (3216 genes in genome v2), quantized to 4
+decimals so JSON round trips reproduce behaviour exactly. Regions:
 
 | Region | Genes | Purpose |
 |---|---|---|
 | `body` | 8 | size, limb, muscle, eye, nerve, metab, wing, focus |
 | `looks` | 24 | hues, saturation, silhouette harmonics, pattern, eyes, antennae, ears, tail, cheeks, mouth, feet |
 | `embed` | 16 × 4 | a learned context vector per challenge slot (10 used, 6 reserved for future games) |
-| `w1`, `w2` | 156 + 39 | one shared neural network: 8 sensors + 4 context + bias → 12 hidden → 3 outputs |
+| `w1`, `w2` | 156 + 39 | slot 0's brain: 8 sensors + 4 context + bias → 12 hidden → 3 outputs |
+| `brains` | 15 × 195 | the same small network for each of slots 1–15 |
+
+v1 genomes (291 genes, one brain shared by every game) still validate and
+play exactly as before: every slot falls back to the one brain. The GA
+upgrades them on the first training session by copying that brain into every
+slot (`upgradeGenome()`), which doesn't change how the pet plays.
 
 **Body genes → traits (pleiotropy).** Body genes pass through a squash and
 are mixed into game-facing traits with overlapping weights (`traits()` in
@@ -38,11 +44,14 @@ Balloon Drift). Long limbs help running and jumping but cost agility. A fast
 metabolism powers reflexes but raises appetite, so the pet gets hungry faster.
 This is what makes one skill help some games and hurt others.
 
-**One shared brain.** Every challenge feeds the same network. The only thing
-that differs per game is the 4-number context embedding, which is itself
-evolved. Training on any game therefore always changes how the pet plays all
-the others, sometimes for the better and sometimes not. The skill profile
-(tested on fixed courses after every session) shows the shift with ▲/▼.
+**A brain per game, one shared body.** Each challenge slot has its own small
+network and context embedding, so skills are lasting: training Loop Racer
+never rewrites how the pet plays Hop Trail. The body is shared, so training a
+game still shifts the traits every other game uses (more muscle for Pole
+Balance makes a heavier jumper). That trade-off is kept mild by the GA's
+retention guard (below), so heavy one-sided training softens other games a
+little instead of wrecking them. The skill profile (tested on fixed courses
+after every session) shows the shift with ▲/▼ and marks each personal best.
 
 **Uniqueness.** A new pet's 291 genes are drawn from a cryptographic seed.
 The looks are rendered procedurally from the genome (`render/pet.js`): body
@@ -65,13 +74,24 @@ effectively zero. Every genome has a fingerprint like `GX-F362B371`.
 - Gaussian mutation with per-region step sizes (looks drift slowly, the brain
   explores fastest), rare macro-mutations, and step size that grows when
   progress stalls.
+- **Focused training** only mutates the focus game's brain and embedding
+  (normal rate) and the shared body (half rate). Every member takes the pet's
+  brains for the other games at the start of a session.
+- **Retention guard.** At the start of a focused session every other game gets
+  a floor: 10% (plus 0.02) below its starting skill-test rating, raised to 75%
+  of its personal best. Any candidate whose body differs from the pet's plays
+  the skill-test courses for every other game and loses 1.5 fitness per 100%
+  of a game's starting skill that it sits below its floor. Results are cached
+  by body, since only the body can change other games. A session therefore
+  costs other games at most a little, and a skill never sinks far below its
+  best. Constants live in `GUARD` in `ga.js`.
 - The generation champion becomes the pet immediately, so you watch it change.
 - **Cross-train** mode uses mean score-versus-par across all 10 games as the
   fitness, for players who want a generalist.
 
 Training runs in a Web Worker. A 24-member generation takes roughly 5–100 ms
-depending on the game, so 100 generations finish in seconds to a couple of
-minutes.
+depending on the game, plus the retention guard for candidates with a new
+body, so 100 generations finish in seconds to a couple of minutes.
 
 ## 3. Challenges (`challenges/*`)
 
