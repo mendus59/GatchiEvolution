@@ -1,5 +1,16 @@
 # Gatchi Evolution
 
+<!-- site-summary:start -->
+<!-- This section is this project's card on https://mendus59.github.io and is copied there daily.
+     Keep it true of what's on main: one plain-text summary line (max 160 characters), then 1-6 short bullets.
+     See CLAUDE.md ("Site summary"). -->
+Raise a pocket pet that learns by evolution.
+
+- Your Gatchi plays ten mini-games on its own, and a genetic algorithm in your browser reshapes its body and brain to get better at whichever one you train.
+- Training runs in a Web Worker; matches are deterministic so the server can re-simulate versus games to referee them.
+- Accounts, cloud backups, friends and a leaderboard.
+<!-- site-summary:end -->
+
 Raise a pocket pet that learns by evolution. Your Gatchi plays ten mini-games
 on its own, and a genetic algorithm running in your browser reshapes its body
 and brain to get better at whichever one you train. Each game builds its own
