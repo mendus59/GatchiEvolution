@@ -11,6 +11,9 @@ Raise a pocket pet that learns by evolution.
 - Accounts, cloud backups, friends and a leaderboard.
 <!-- site-summary:end -->
 
+<!-- site-screenshot: docs/screenshot.jpg -->
+![Screenshot of Gatchi Evolution](docs/screenshot.jpg)
+
 Raise a pocket pet that learns by evolution. Your Gatchi plays ten mini-games
 on its own, and a genetic algorithm running in your browser reshapes its body
 and brain to get better at whichever one you train. Each game builds its own
